@@ -403,6 +403,12 @@ LANG_INFO = {
         'name': 'Tatar',
         'name_local': '\u0422\u0430\u0442\u0430\u0440\u0447\u0430',
     },
+    'udm': {
+        'bidi': False,
+        'code': 'udm',
+        'name': 'Udmurt',
+        'name_local': '\u0423\u0434\u043c\u0443\u0440\u0442',
+    },
     'uk': {
         'bidi': False,
         'code': 'uk',
