@@ -5,7 +5,7 @@
 Django documentation
 ====================
 
-.. rubric:: Everything you need to know about Django (and then some).
+.. rubric:: Everything you need to know about Django.
 
 Getting help
 ============
@@ -44,7 +44,12 @@ Are you new to Django or to programming? This is the place to start!
   :doc:`Part 1 <intro/tutorial01>` |
   :doc:`Part 2 <intro/tutorial02>` |
   :doc:`Part 3 <intro/tutorial03>` |
-  :doc:`Part 4 <intro/tutorial04>`
+  :doc:`Part 4 <intro/tutorial04>` |
+  :doc:`Part 5 <intro/tutorial05>`
+
+* **Advanced Tutorials:**
+  :doc:`How to write reusable apps <intro/reusable-apps>` |
+  :doc:`Writing your first patch for Django <intro/contributing>`
 
 The model layer
 ===============
@@ -104,9 +109,12 @@ to know about views via the links below:
   :doc:`Custom storage <howto/custom-file-storage>`
 
 * **Class-based views:**
-  :doc:`Overview<topics/class-based-views/index>` |
-  :doc:`Built-in class-based views<ref/class-based-views/index>` |
-  :doc:`Built-in view mixins<ref/class-based-views/mixins>`
+  :doc:`Overview <topics/class-based-views/index>` |
+  :doc:`Built-in display views <topics/class-based-views/generic-display>` |
+  :doc:`Built-in editing views <topics/class-based-views/generic-editing>` |
+  :doc:`Using mixins <topics/class-based-views/mixins>` |
+  :doc:`API reference <ref/class-based-views/index>` |
+  :doc:`Flattened index<ref/class-based-views/flattened-index>`
 
 * **Advanced:**
   :doc:`Generating CSV <howto/outputting-csv>` |
@@ -172,13 +180,16 @@ testing of Django applications:
   :doc:`Overview <ref/django-admin>` |
   :doc:`Adding custom commands <howto/custom-management-commands>`
 
-* **Testing:**  :doc:`Overview <topics/testing>`
+* **Testing:**
+  :doc:`Introduction <topics/testing/index>` |
+  :doc:`Writing and running tests <topics/testing/overview>` |
+  :doc:`Advanced topics <topics/testing/advanced>` |
+  :doc:`Doctests <topics/testing/doctests>`
 
 * **Deployment:**
   :doc:`Overview <howto/deployment/index>` |
   :doc:`WSGI servers <howto/deployment/wsgi/index>` |
   :doc:`FastCGI/SCGI/AJP <howto/deployment/fastcgi>` |
-  :doc:`Apache authentication <howto/apache-auth>` |
   :doc:`Handling static files <howto/static-files>` |
   :doc:`Tracking code errors by email <howto/error-reporting>`
 
@@ -211,7 +222,7 @@ assist you in the development of applications for multiple languages and world
 regions:
 
 * :doc:`Internationalization <topics/i18n/index>`
-* :doc:`"Local flavor" <ref/contrib/localflavor>`
+* :doc:`"Local flavor" <topics/localflavor>`
 
 Python compatibility
 ====================
@@ -235,10 +246,10 @@ Common Web application tools
 Django offers multiple tools commonly needed in the development of Web
 applications:
 
-* :doc:`Authentication <topics/auth>`
+* :doc:`Authentication <topics/auth/index>`
 * :doc:`Caching <topics/cache>`
 * :doc:`Logging <topics/logging>`
-* :doc:`Sending e-mails <topics/email>`
+* :doc:`Sending emails <topics/email>`
 * :doc:`Syndication feeds (RSS/Atom) <ref/contrib/syndication>`
 * :doc:`Comments <ref/contrib/comments/index>`, :doc:`comment moderation <ref/contrib/comments/moderation>` and :doc:`custom comments <ref/contrib/comments/custom>`
 * :doc:`Pagination <topics/pagination>`
@@ -256,7 +267,6 @@ Learn about some other core functionalities of the Django framework:
 
 * :doc:`Conditional content processing <topics/conditional-view-processing>`
 * :doc:`Content types and generic relations <ref/contrib/contenttypes>`
-* :doc:`Databrowse <ref/contrib/databrowse>`
 * :doc:`Flatpages <ref/contrib/flatpages>`
 * :doc:`Redirects <ref/contrib/redirects>`
 * :doc:`Signals <topics/signals>`

@@ -12,6 +12,7 @@ from django.db import (backend, connection, connections, DEFAULT_DB_ALIAS,
     IntegrityError, transaction)
 from django.db.backends.signals import connection_created
 from django.db.backends.postgresql_psycopg2 import version as pg_version
+from django.db.models import fields, Sum, Avg, Variance, StdDev
 from django.db.utils import ConnectionHandler, DatabaseError, load_backend
 from django.test import (TestCase, skipUnlessDBFeature, skipIfDBFeature,
     TransactionTestCase)
@@ -23,7 +24,26 @@ from django.utils import unittest
 from . import models
 
 
+class DummyBackendTest(TestCase):
+    def test_no_databases(self):
+        """
+        Test that empty DATABASES setting default to the dummy backend.
+        """
+        DATABASES = {}
+        conns = ConnectionHandler(DATABASES)
+        self.assertEqual(conns[DEFAULT_DB_ALIAS].settings_dict['ENGINE'],
+            'django.db.backends.dummy')
+
+
 class OracleChecks(unittest.TestCase):
+
+    @unittest.skipUnless(connection.vendor == 'oracle',
+                         "No need to check Oracle quote_name semantics")
+    def test_quote_name(self):
+        # Check that '%' chars are escaped for query execution.
+        name = '"SOME%NAME"'
+        quoted_name = connection.ops.quote_name(name)
+        self.assertEqual(quoted_name % (), name)
 
     @unittest.skipUnless(connection.vendor == 'oracle',
                          "No need to check Oracle cursor semantics")
@@ -343,6 +363,22 @@ class EscapingChecks(TestCase):
         self.assertTrue(int(response))
 
 
+class SqlliteAggregationTests(TestCase):
+    """
+    #19360: Raise NotImplementedError when aggregating on date/time fields.
+    """
+    @unittest.skipUnless(connection.vendor == 'sqlite',
+                         "No need to check SQLite aggregation semantics")
+    def test_aggregation(self):
+        for aggregate in (Sum, Avg, Variance, StdDev):
+            self.assertRaises(NotImplementedError,
+                models.Item.objects.all().aggregate, aggregate('time'))
+            self.assertRaises(NotImplementedError,
+                models.Item.objects.all().aggregate, aggregate('date'))
+            self.assertRaises(NotImplementedError,
+                models.Item.objects.all().aggregate, aggregate('last_modified'))
+
+
 class BackendTestCase(TestCase):
 
     def create_squares_with_executemany(self, args):
@@ -381,7 +417,6 @@ class BackendTestCase(TestCase):
             self.create_squares_with_executemany(args)
         self.assertEqual(models.Square.objects.count(), 9)
 
-
     def test_unicode_fetches(self):
         #6254: fetchone, fetchmany, fetchall return strings as unicode objects
         qn = connection.ops.quote_name
@@ -400,6 +435,19 @@ class BackendTestCase(TestCase):
         self.assertEqual(cursor.fetchone(), ('Clark', 'Kent'))
         self.assertEqual(list(cursor.fetchmany(2)), [('Jane', 'Doe'), ('John', 'Doe')])
         self.assertEqual(list(cursor.fetchall()), [('Mary', 'Agnelline'), ('Peter', 'Parker')])
+
+    def test_unicode_password(self):
+        old_password = connection.settings_dict['PASSWORD']
+        connection.settings_dict['PASSWORD'] = "françois"
+        try:
+            cursor = connection.cursor()
+        except backend.Database.DatabaseError:
+            # As password is probably wrong, a database exception is expected
+            pass
+        except Exception as e:
+            self.fail("Unexpected error raised with unicode password: %s" % e)
+        finally:
+            connection.settings_dict['PASSWORD'] = old_password
 
     def test_database_operations_helper_class(self):
         # Ticket #13630
@@ -527,21 +575,30 @@ class ThreadTests(TestCase):
         """
         connections_set = set()
         connection.cursor()
-        connections_set.add(connection.connection)
+        connections_set.add(connection)
         def runner():
-            from django.db import connection
+            # Passing django.db.connection between threads doesn't work while
+            # connections[DEFAULT_DB_ALIAS] does.
+            from django.db import connections
+            connection = connections[DEFAULT_DB_ALIAS]
+            # Allow thread sharing so the connection can be closed by the
+            # main thread.
+            connection.allow_thread_sharing = True
             connection.cursor()
-            connections_set.add(connection.connection)
+            connections_set.add(connection)
         for x in range(2):
             t = threading.Thread(target=runner)
             t.start()
             t.join()
-        self.assertEqual(len(connections_set), 3)
+        # Check that each created connection got different inner connection.
+        self.assertEqual(
+            len(set([conn.connection for conn in connections_set])),
+            3)
         # Finish by closing the connections opened by the other threads (the
         # connection opened in the main thread will automatically be closed on
         # teardown).
         for conn in connections_set:
-            if conn != connection.connection:
+            if conn is not connection:
                 conn.close()
 
     def test_connections_thread_local(self):
@@ -568,7 +625,7 @@ class ThreadTests(TestCase):
         # connection opened in the main thread will automatically be closed on
         # teardown).
         for conn in connections_set:
-            if conn != connection:
+            if conn is not connection:
                 conn.close()
 
     def test_pass_connection_between_threads(self):
@@ -651,13 +708,6 @@ class ThreadTests(TestCase):
         t1.join()
         # No exception was raised
         self.assertEqual(len(exceptions), 0)
-
-
-class BackendLoadingTests(TestCase):
-    def test_old_style_backends_raise_useful_exception(self):
-        self.assertRaisesRegexp(ImproperlyConfigured,
-            "Try using django.db.backends.sqlite3 instead",
-            load_backend, 'sqlite3')
 
 
 class MySQLPKZeroTests(TestCase):

@@ -15,18 +15,18 @@ import warnings
 
 from django.conf import settings
 from django.core import management
-from django.core.cache import get_cache, DEFAULT_CACHE_ALIAS
+from django.core.cache import get_cache
 from django.core.cache.backends.base import (CacheKeyWarning,
     InvalidCacheBackendError)
 from django.db import router
-from django.http import HttpResponse, HttpRequest, QueryDict
+from django.http import (HttpResponse, HttpRequest, StreamingHttpResponse,
+    QueryDict)
 from django.middleware.cache import (FetchFromCacheMiddleware,
     UpdateCacheMiddleware, CacheMiddleware)
 from django.template import Template
 from django.template.response import TemplateResponse
 from django.test import TestCase, TransactionTestCase, RequestFactory
-from django.test.utils import (get_warnings_state, restore_warnings_state,
-    override_settings)
+from django.test.utils import override_settings, six
 from django.utils import timezone, translation, unittest
 from django.utils.cache import (patch_vary_headers, get_cache_key,
     learn_cache_key, patch_cache_control, patch_response_headers)
@@ -257,6 +257,7 @@ class BaseCacheTests(object):
         self.assertEqual(self.cache.get('answer'), 42)
         self.assertEqual(self.cache.incr('answer', 10), 52)
         self.assertEqual(self.cache.get('answer'), 52)
+        self.assertEqual(self.cache.incr('answer', -10), 42)
         self.assertRaises(ValueError, self.cache.incr, 'does_not_exist')
 
     def test_decr(self):
@@ -266,7 +267,12 @@ class BaseCacheTests(object):
         self.assertEqual(self.cache.get('answer'), 42)
         self.assertEqual(self.cache.decr('answer', 10), 32)
         self.assertEqual(self.cache.get('answer'), 32)
+        self.assertEqual(self.cache.decr('answer', -10), 42)
         self.assertRaises(ValueError, self.cache.decr, 'does_not_exist')
+
+    def test_close(self):
+        self.assertTrue(hasattr(self.cache, 'close'))
+        self.cache.close()
 
     def test_data_types(self):
         # Many different data types can be cached
@@ -821,7 +827,7 @@ class DBCacheTests(BaseCacheTests, TransactionTestCase):
         self.perform_cull_test(50, 18)
 
     def test_second_call_doesnt_crash(self):
-        with self.assertRaisesRegexp(management.CommandError,
+        with six.assertRaisesRegex(self, management.CommandError,
                 "Cache table 'test cache table' could not be created"):
             management.call_command(
                'createcachetable',
@@ -1417,6 +1423,26 @@ class CacheI18nTest(TestCase):
         # reset the language
         translation.deactivate()
 
+    @override_settings(
+            CACHE_MIDDLEWARE_KEY_PREFIX="test",
+            CACHE_MIDDLEWARE_SECONDS=60,
+            USE_ETAGS=True,
+    )
+    def test_middleware_doesnt_cache_streaming_response(self):
+        request = self._get_request()
+        get_cache_data = FetchFromCacheMiddleware().process_request(request)
+        self.assertIsNone(get_cache_data)
+
+        # This test passes on Python < 3.3 even without the corresponding code
+        # in UpdateCacheMiddleware, because pickling a StreamingHttpResponse
+        # fails (http://bugs.python.org/issue14288). LocMemCache silently
+        # swallows the exception and doesn't store the response in cache.
+        content = ['Check for cache with streaming content.']
+        response = StreamingHttpResponse(content)
+        UpdateCacheMiddleware().process_response(request, response)
+
+        get_cache_data = FetchFromCacheMiddleware().process_request(request)
+        self.assertIsNone(get_cache_data)
 
 @override_settings(
         CACHES={
@@ -1452,19 +1478,12 @@ def hello_world_view(request, value):
 )
 class CacheMiddlewareTest(TestCase):
 
-    # The following tests will need to be modified in Django 1.6 to not use
-    # deprecated ways of using the cache_page decorator that will be removed in
-    # such version
     def setUp(self):
         self.factory = RequestFactory()
         self.default_cache = get_cache('default')
         self.other_cache = get_cache('other')
-        self.save_warnings_state()
-        warnings.filterwarnings('ignore', category=DeprecationWarning,
-            module='django.views.decorators.cache')
 
     def tearDown(self):
-        self.restore_warnings_state()
         self.default_cache.clear()
         self.other_cache.clear()
 
@@ -1577,21 +1596,20 @@ class CacheMiddlewareTest(TestCase):
         request.user = MockAuthenticatedUser()
         request.session = MockAccessedSession()
 
-        response = cache_page(hello_world_view)(request, '1')
+        response = cache_page(60)(hello_world_view)(request, '1')
 
         self.assertFalse("Cache-Control" in response)
 
     def test_view_decorator(self):
         # decorate the same view with different cache decorators
-        default_view = cache_page(hello_world_view)
-        default_with_prefix_view = cache_page(key_prefix='prefix1')(hello_world_view)
+        default_view = cache_page(3)(hello_world_view)
+        default_with_prefix_view = cache_page(3, key_prefix='prefix1')(hello_world_view)
 
-        explicit_default_view = cache_page(cache='default')(hello_world_view)
-        explicit_default_with_prefix_view = cache_page(cache='default', key_prefix='prefix1')(hello_world_view)
+        explicit_default_view = cache_page(3, cache='default')(hello_world_view)
+        explicit_default_with_prefix_view = cache_page(3, cache='default', key_prefix='prefix1')(hello_world_view)
 
-        other_view = cache_page(cache='other')(hello_world_view)
-        other_with_prefix_view = cache_page(cache='other', key_prefix='prefix2')(hello_world_view)
-        other_with_timeout_view = cache_page(3, cache='other', key_prefix='prefix3')(hello_world_view)
+        other_view = cache_page(1, cache='other')(hello_world_view)
+        other_with_prefix_view = cache_page(1, cache='other', key_prefix='prefix2')(hello_world_view)
 
         request = self.factory.get('/view/')
 
@@ -1631,10 +1649,6 @@ class CacheMiddlewareTest(TestCase):
         response = other_with_prefix_view(request, '9')
         self.assertEqual(response.content, b'Hello World 9')
 
-        # Request from the alternate cache with a new prefix and a custom timeout
-        response = other_with_timeout_view(request, '10')
-        self.assertEqual(response.content, b'Hello World 10')
-
         # But if we wait a couple of seconds...
         time.sleep(2)
 
@@ -1662,18 +1676,6 @@ class CacheMiddlewareTest(TestCase):
         # .. even if it has a prefix
         response = other_with_prefix_view(request, '16')
         self.assertEqual(response.content, b'Hello World 16')
-
-        # ... but a view with a custom timeout will still hit
-        response = other_with_timeout_view(request, '17')
-        self.assertEqual(response.content, b'Hello World 10')
-
-        # And if we wait a few more seconds
-        time.sleep(2)
-
-        # the custom timeout cache will miss
-        response = other_with_timeout_view(request, '18')
-        self.assertEqual(response.content, b'Hello World 18')
-
 
 @override_settings(
         CACHE_MIDDLEWARE_KEY_PREFIX='settingsprefix',

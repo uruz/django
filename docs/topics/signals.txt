@@ -30,7 +30,7 @@ notifications:
 
 * :data:`django.db.models.signals.m2m_changed`
 
-  Sent when a :class:`ManyToManyField` on a model is changed.
+  Sent when a :class:`~django.db.models.ManyToManyField` on a model is changed.
 
 * :data:`django.core.signals.request_started` &
   :data:`django.core.signals.request_finished`
@@ -131,10 +131,6 @@ Now, our ``my_callback`` function will be called each time a request finishes.
 
 Note that ``receiver`` can also take a list of signals to connect a function
 to.
-
-.. versionadded:: 1.3
-
-The ``receiver`` decorator was added in Django 1.3.
 
 .. versionchanged:: 1.5
 

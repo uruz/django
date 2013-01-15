@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-from django.forms import Form, CharField, IntegerField, ValidationError, DateField
-from django.forms.formsets import formset_factory, BaseFormSet
+from django.forms import (CharField, DateField, FileField, Form, IntegerField,
+    ValidationError)
+from django.forms.formsets import BaseFormSet, formset_factory
+from django.forms.util import ErrorList
 from django.test import TestCase
 
 
@@ -847,6 +849,36 @@ class FormsFormsetTestCase(TestCase):
         self.assertTrue(formset)
 
 
+    def test_formset_error_class(self):
+        # Regression tests for #16479 -- formsets form use ErrorList instead of supplied error_class
+        class CustomErrorList(ErrorList):
+            pass
+
+        formset = FavoriteDrinksFormSet(error_class=CustomErrorList)
+        self.assertEqual(formset.forms[0].error_class, CustomErrorList)
+
+    def test_formset_calls_forms_is_valid(self):
+        # Regression tests for #18574 -- make sure formsets call
+        # is_valid() on each form.
+
+        class AnotherChoice(Choice):
+            def is_valid(self):
+                self.is_valid_called = True
+                return super(AnotherChoice, self).is_valid()
+
+        AnotherChoiceFormSet = formset_factory(AnotherChoice)
+        data = {
+            'choices-TOTAL_FORMS': '1',  # number of forms rendered
+            'choices-INITIAL_FORMS': '0',  # number of forms with initial data
+            'choices-MAX_NUM_FORMS': '0',  # max number of forms
+            'choices-0-choice': 'Calexico',
+            'choices-0-votes': '100',
+        }
+        formset = AnotherChoiceFormSet(data, auto_id=False, prefix='choices')
+        self.assertTrue(formset.is_valid())
+        self.assertTrue(all([form.is_valid_called for form in formset.forms]))
+
+
 data = {
     'choices-TOTAL_FORMS': '1', # the number of forms rendered
     'choices-INITIAL_FORMS': '0', # the number of forms with initial data
@@ -943,11 +975,23 @@ class TestIsBoundBehavior(TestCase):
         self.assertHTMLEqual(empty_forms[0].as_p(), empty_forms[1].as_p())
 
 class TestEmptyFormSet(TestCase):
-    "Test that an empty formset still calls clean()"
     def test_empty_formset_is_valid(self):
+        """Test that an empty formset still calls clean()"""
         EmptyFsetWontValidateFormset = formset_factory(FavoriteDrinkForm, extra=0, formset=EmptyFsetWontValidate)
         formset = EmptyFsetWontValidateFormset(data={'form-INITIAL_FORMS':'0', 'form-TOTAL_FORMS':'0'},prefix="form")
         formset2 = EmptyFsetWontValidateFormset(data={'form-INITIAL_FORMS':'0', 'form-TOTAL_FORMS':'1', 'form-0-name':'bah' },prefix="form")
         self.assertFalse(formset.is_valid())
         self.assertFalse(formset2.is_valid())
 
+    def test_empty_formset_media(self):
+        """Make sure media is available on empty formset, refs #19545"""
+        class MediaForm(Form):
+            class Media:
+                js = ('some-file.js',)
+        self.assertIn('some-file.js', str(formset_factory(MediaForm, extra=0)().media))
+
+    def test_empty_formset_is_multipart(self):
+        """Make sure `is_multipart()` works with empty formset, refs #19545"""
+        class FileForm(Form):
+            file = FileField()
+        self.assertTrue(formset_factory(FileForm, extra=0)().is_multipart())

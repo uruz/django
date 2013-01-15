@@ -53,7 +53,7 @@ class GetObjectOr404Tests(TestCase):
             get_object_or_404, Author.objects.all()
         )
 
-        # Using an EmptyQuerySet raises a Http404 error.
+        # Using an empty QuerySet raises a Http404 error.
         self.assertRaises(Http404,
             get_object_or_404, Article.objects.none(), title__contains="Run"
         )
@@ -79,4 +79,29 @@ class GetObjectOr404Tests(TestCase):
         self.assertEqual(
             get_list_or_404(Article.objects.all(), title__icontains="Run"),
             [article]
+        )
+
+    def test_bad_class(self):
+        # Given an argument klass that is not a Model, Manager, or Queryset
+        # raises a helpful ValueError message
+        self.assertRaisesMessage(ValueError,
+            "Object is of type 'str', but must be a Django Model, Manager, "
+            "or QuerySet",
+            get_object_or_404, "Article", title__icontains="Run"
+        )
+
+        class CustomClass(object):
+            pass
+
+        self.assertRaisesMessage(ValueError,
+            "Object is of type 'CustomClass', but must be a Django Model, "
+            "Manager, or QuerySet",
+            get_object_or_404, CustomClass, title__icontains="Run"
+        )
+
+        # Works for lists too
+        self.assertRaisesMessage(ValueError,
+            "Object is of type 'list', but must be a Django Model, Manager, "
+            "or QuerySet",
+            get_list_or_404, [Article], title__icontains="Run"
         )

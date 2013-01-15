@@ -1,3 +1,8 @@
+try:
+    from itertools import zip_longest
+except ImportError:
+    from itertools import izip_longest as zip_longest
+
 from django.utils.six.moves import zip
 
 from django.db.backends.util import truncate_name, typecast_timestamp
@@ -34,7 +39,7 @@ class GeoSQLCompiler(compiler.SQLCompiler):
         if self.query.select:
             only_load = self.deferred_to_columns()
             # This loop customized for GeoQuery.
-            for col, field in zip(self.query.select, self.query.select_fields):
+            for col, field in self.query.select:
                 if isinstance(col, (list, tuple)):
                     alias, column = col
                     table = self.query.alias_map[alias].table_name
@@ -80,7 +85,7 @@ class GeoSQLCompiler(compiler.SQLCompiler):
         ])
 
         # This loop customized for GeoQuery.
-        for (table, col), field in zip(self.query.related_select_cols, self.query.related_select_fields):
+        for (table, col), field in self.query.related_select_cols:
             r = self.get_field_select(field, table, col)
             if with_aliases and col in col_aliases:
                 c_alias = 'Col%d' % len(col_aliases)
@@ -96,7 +101,7 @@ class GeoSQLCompiler(compiler.SQLCompiler):
         return result
 
     def get_default_columns(self, with_aliases=False, col_aliases=None,
-            start_alias=None, opts=None, as_pairs=False, local_only=False):
+            start_alias=None, opts=None, as_pairs=False, from_parent=None):
         """
         Computes the default columns for selecting every field in the base
         model. Will sometimes be called to pull in related models (e.g. via
@@ -116,30 +121,14 @@ class GeoSQLCompiler(compiler.SQLCompiler):
             opts = self.query.model._meta
         aliases = set()
         only_load = self.deferred_to_columns()
-        # Skip all proxy to the root proxied model
-        proxied_model = opts.concrete_model
-
+        seen = self.query.included_inherited_models.copy()
         if start_alias:
-            seen = {None: start_alias}
+            seen[None] = start_alias
         for field, model in opts.get_fields_with_model():
-            if local_only and model is not None:
+            if from_parent and model is not None and issubclass(from_parent, model):
+                # Avoid loading data for already loaded parents.
                 continue
-            if start_alias:
-                try:
-                    alias = seen[model]
-                except KeyError:
-                    if model is proxied_model:
-                        alias = start_alias
-                    else:
-                        link_field = opts.get_ancestor_link(model)
-                        alias = self.query.join((start_alias, model._meta.db_table,
-                                link_field.column, model._meta.pk.column))
-                    seen[model] = alias
-            else:
-                # If we're starting from the base model of the queryset, the
-                # aliases will have already been set up in pre_sql_setup(), so
-                # we can save time here.
-                alias = self.query.included_inherited_models[model]
+            alias = self.query.join_parent_model(opts, model, start_alias, seen)
             table = self.query.alias_map[alias].table_name
             if table in only_load and field.column not in only_load[table]:
                 continue
@@ -190,7 +179,7 @@ class GeoSQLCompiler(compiler.SQLCompiler):
         if self.connection.ops.oracle or getattr(self.query, 'geo_values', False):
             # We resolve the rest of the columns if we're on Oracle or if
             # the `geo_values` attribute is defined.
-            for value, field in map(None, row[index_start:], fields):
+            for value, field in zip_longest(row[index_start:], fields):
                 values.append(self.query.convert_values(value, field, self.connection))
         else:
             values.extend(row[index_start:])

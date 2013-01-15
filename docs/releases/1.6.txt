@@ -1,0 +1,66 @@
+============================================
+Django 1.6 release notes - UNDER DEVELOPMENT
+============================================
+
+Welcome to Django 1.6!
+
+These release notes cover the `new features`_, as well as some `backwards
+incompatible changes`_ you'll want to be aware of when upgrading from Django
+1.5 or older versions. We've also dropped some features, which are detailed in
+:doc:`our deprecation plan </internals/deprecation>`, and we've `begun the
+deprecation process for some features`_.
+
+.. _`new features`: `What's new in Django 1.6`_
+.. _`backwards incompatible changes`: `Backwards incompatible changes in 1.6`_
+.. _`begun the deprecation process for some features`: `Features deprecated in 1.6`_
+
+What's new in Django 1.6
+========================
+
+Minor features
+~~~~~~~~~~~~~~
+
+* Authentication backends can raise ``PermissionDenied`` to immediately fail
+  the authentication chain.
+
+* The ``assertQuerysetEqual()`` now checks for undefined order and raises
+  ``ValueError`` if undefined order is spotted. The order is seen as
+  undefined if the given ``QuerySet`` isn't ordered and there are more than
+  one ordered values to compare against.
+
+Backwards incompatible changes in 1.6
+=====================================
+
+* The ``django.db.models.query.EmptyQuerySet`` can't be instantiated any more -
+  it is only usable as a marker class for checking if
+  :meth:`~django.db.models.query.QuerySet.none` has been called:
+  ``isinstance(qs.none(), EmptyQuerySet)``
+
+.. warning::
+
+    In addition to the changes outlined in this section, be sure to review the
+    :doc:`deprecation plan </internals/deprecation>` for any features that
+    have been removed. If you haven't updated your code within the
+    deprecation timeline for a given feature, its removal may appear as a
+    backwards incompatible change.
+
+Features deprecated in 1.6
+==========================
+
+``SEND_BROKEN_LINK_EMAILS`` setting
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:class:`~django.middleware.common.CommonMiddleware` used to provide basic
+reporting of broken links by email when ``SEND_BROKEN_LINK_EMAILS`` is set to
+``True``.
+
+Because of intractable ordering problems between
+:class:`~django.middleware.common.CommonMiddleware` and
+:class:`~django.middleware.locale.LocaleMiddleware`, this feature was split
+out into a new middleware:
+:class:`~django.middleware.common.BrokenLinkEmailsMiddleware`.
+
+If you're relying on this feature, you should add
+``'django.middleware.common.BrokenLinkEmailsMiddleware'`` to your
+:setting:`MIDDLEWARE_CLASSES` setting and remove ``SEND_BROKEN_LINK_EMAILS``
+from your settings.

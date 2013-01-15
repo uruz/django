@@ -5,7 +5,6 @@ import shutil
 import tempfile
 
 from django.core.cache import cache
-from django.core.exceptions import ValidationError
 from django.core.files import File
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -20,7 +19,7 @@ class FileStorageTests(TestCase):
         shutil.rmtree(temp_storage_location)
 
     def test_files(self):
-        temp_storage.save('tests/default.txt', ContentFile(b'default content'))
+        temp_storage.save('tests/default.txt', ContentFile('default content'))
         # Attempting to access a FileField from the class raises a descriptive
         # error
         self.assertRaises(AttributeError, lambda: Storage.normal)
@@ -31,7 +30,7 @@ class FileStorageTests(TestCase):
         self.assertRaises(ValueError, lambda: obj1.normal.size)
 
         # Saving a file enables full functionality.
-        obj1.normal.save("django_test.txt", ContentFile(b"content"))
+        obj1.normal.save("django_test.txt", ContentFile("content"))
         self.assertEqual(obj1.normal.name, "tests/django_test.txt")
         self.assertEqual(obj1.normal.size, 7)
         self.assertEqual(obj1.normal.read(), b"content")
@@ -59,7 +58,7 @@ class FileStorageTests(TestCase):
 
         # Save another file with the same name.
         obj2 = Storage()
-        obj2.normal.save("django_test.txt", ContentFile(b"more content"))
+        obj2.normal.save("django_test.txt", ContentFile("more content"))
         self.assertEqual(obj2.normal.name, "tests/django_test_1.txt")
         self.assertEqual(obj2.normal.size, 12)
 
@@ -70,13 +69,13 @@ class FileStorageTests(TestCase):
 
         # Deleting an object does not delete the file it uses.
         obj2.delete()
-        obj2.normal.save("django_test.txt", ContentFile(b"more content"))
+        obj2.normal.save("django_test.txt", ContentFile("more content"))
         self.assertEqual(obj2.normal.name, "tests/django_test_2.txt")
 
         # Multiple files with the same name get _N appended to them.
         objs = [Storage() for i in range(3)]
         for o in objs:
-            o.normal.save("multiple_files.txt", ContentFile(b"Same Content"))
+            o.normal.save("multiple_files.txt", ContentFile("Same Content"))
         self.assertEqual(
             [o.normal.name for o in objs],
             ["tests/multiple_files.txt", "tests/multiple_files_1.txt", "tests/multiple_files_2.txt"]
@@ -100,26 +99,8 @@ class FileStorageTests(TestCase):
         # Verify the fix for #5655, making sure the directory is only
         # determined once.
         obj4 = Storage()
-        obj4.random.save("random_file", ContentFile(b"random content"))
+        obj4.random.save("random_file", ContentFile("random content"))
         self.assertTrue(obj4.random.name.endswith("/random_file"))
-
-    def test_max_length(self):
-        """
-        Test that FileField validates the length of the generated file name
-        that will be stored in the database. Regression for #9893.
-        """
-        # upload_to = 'unused', so file names are saved as '456/xxxxx'.
-        # max_length = 16, so names longer than 12 characters are rejected.
-        s1 = Storage(random=SimpleUploadedFile(12 * 'x', b"content"))
-        s1.full_clean()
-        with self.assertRaises(ValidationError):
-            Storage(random=SimpleUploadedFile(13 * 'x', b"content")).full_clean()
-
-        # Ticket #18515: validation for an already saved file should not check
-        # against a regenerated file name (and potentially raise a ValidationError
-        # if max_length is exceeded
-        s1.save()
-        s1.full_clean()
 
 
 class FileTests(unittest.TestCase):

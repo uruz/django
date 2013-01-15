@@ -26,6 +26,8 @@ to (see `Serialization formats`_) and a
 argument can be any iterator that yields Django model instances, but it'll
 almost always be a QuerySet).
 
+.. function:: django.core.serializers.get_serializer(format)
+
 You can also use a serializer object directly::
 
     XMLSerializer = serializers.get_serializer("xml")
@@ -43,7 +45,7 @@ This is useful if you want to serialize data directly to a file-like object
 
     Calling :func:`~django.core.serializers.get_serializer` with an unknown
     :ref:`format <serialization-formats>` will raise a
-    :class:`~django.core.serializers.SerializerDoesNotExist` exception.
+    ``django.core.serializers.SerializerDoesNotExist`` exception.
 
 Subset of fields
 ~~~~~~~~~~~~~~~~
@@ -130,6 +132,14 @@ trust your data source you could just save the object and move on.
 
 The Django object itself can be inspected as ``deserialized_object.object``.
 
+.. versionadded:: 1.5
+
+If fields in the serialized data do not exist on a model,
+a ``DeserializationError`` will be raised unless the ``ignorenonexistent``
+argument is passed in as True::
+
+    serializers.deserialize("xml", data, ignorenonexistent=True)
+
 .. _serialization-formats:
 
 Serialization formats
@@ -158,15 +168,6 @@ Notes for specific serialization formats
 json
 ^^^^
 
-If you're using UTF-8 (or any other non-ASCII encoding) data with the JSON
-serializer, you must pass ``ensure_ascii=False`` as a parameter to the
-``serialize()`` call. Otherwise, the output won't be encoded correctly.
-
-For example::
-
-    json_serializer = serializers.get_serializer("json")()
-    json_serializer.serialize(queryset, ensure_ascii=False, stream=response)
-
 Be aware that not all Django output can be passed unmodified to :mod:`json`.
 In particular, :ref:`lazy translation objects <lazy-translations>` need a
 `special encoder`_ written for them. Something like this will work::
@@ -194,7 +195,7 @@ This strategy works well for most objects, but it can cause difficulty in some
 circumstances.
 
 Consider the case of a list of objects that have a foreign key referencing
-:class:`~django.contrib.conttenttypes.models.ContentType`. If you're going to
+:class:`~django.contrib.contenttypes.models.ContentType`. If you're going to
 serialize an object that refers to a content type, then you need to have a way
 to refer to that content type to begin with. Since ``ContentType`` objects are
 automatically created by Django during the database synchronization process,

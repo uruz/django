@@ -14,9 +14,8 @@ import socket
 import sys
 import traceback
 try:
-    from urllib.parse import unquote, urljoin
+    from urllib.parse import urljoin
 except ImportError:     # Python 2
-    from urllib import unquote
     from urlparse import urljoin
 from django.utils.six.moves import socketserver
 from wsgiref import simple_server
@@ -110,6 +109,17 @@ class ServerHandler(simple_server.ServerHandler, object):
         super(ServerHandler, self).error_output(environ, start_response)
         return ['\n'.join(traceback.format_exception(*sys.exc_info()))]
 
+    # Backport of http://hg.python.org/cpython/rev/d5af1b235dab. See #16241.
+    # This can be removed when support for Python <= 2.7.3 is deprecated.
+    def finish_response(self):
+        try:
+            if not self.result_is_file() or not self.sendfile():
+                for data in self.result:
+                    self.write(data)
+                self.finish_content()
+        finally:
+            self.close()
+
 
 class WSGIServer(simple_server.WSGIServer, object):
     """BaseHTTPServer that implements the Python WSGI protocol"""
@@ -139,36 +149,9 @@ class WSGIRequestHandler(simple_server.WSGIRequestHandler, object):
         self.style = color_style()
         super(WSGIRequestHandler, self).__init__(*args, **kwargs)
 
-    def get_environ(self):
-        env = self.server.base_environ.copy()
-        env['SERVER_PROTOCOL'] = self.request_version
-        env['REQUEST_METHOD'] = self.command
-        if '?' in self.path:
-            path,query = self.path.split('?',1)
-        else:
-            path,query = self.path,''
-
-        env['PATH_INFO'] = unquote(path)
-        env['QUERY_STRING'] = query
-        env['REMOTE_ADDR'] = self.client_address[0]
-        env['CONTENT_TYPE'] = self.headers.get('content-type', 'text/plain')
-
-        length = self.headers.get('content-length')
-        if length:
-            env['CONTENT_LENGTH'] = length
-
-        for key, value in self.headers.items():
-            key = key.replace('-','_').upper()
-            value = value.strip()
-            if key in env:
-                # Skip content length, type, etc.
-                continue
-            if 'HTTP_' + key in env:
-                # Comma-separate multiple headers
-                env['HTTP_' + key] += ',' + value
-            else:
-                env['HTTP_' + key] = value
-        return env
+    def address_string(self):
+        # Short-circuit parent method to not call socket.getfqdn
+        return self.client_address[0]
 
     def log_message(self, format, *args):
         # Don't bother logging requests for admin images or the favicon.

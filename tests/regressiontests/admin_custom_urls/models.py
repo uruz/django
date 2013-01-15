@@ -1,7 +1,9 @@
 from functools import update_wrapper
 
 from django.contrib import admin
+from django.core.urlresolvers import reverse
 from django.db import models
+from django.http import HttpResponseRedirect
 from django.utils.encoding import python_2_unicode_compatible
 
 
@@ -49,4 +51,30 @@ class ActionAdmin(admin.ModelAdmin):
         ) + self.remove_url(view_name)
 
 
+class Person(models.Model):
+    name = models.CharField(max_length=20)
+
+class PersonAdmin(admin.ModelAdmin):
+
+    def response_post_save_add(self, request, obj):
+        return HttpResponseRedirect(
+            reverse('admin:admin_custom_urls_person_history', args=[obj.pk]))
+
+    def response_post_save_change(self, request, obj):
+        return HttpResponseRedirect(
+            reverse('admin:admin_custom_urls_person_delete', args=[obj.pk]))
+
+
+class Car(models.Model):
+    name = models.CharField(max_length=20)
+
+class CarAdmin(admin.ModelAdmin):
+
+    def response_add(self, request, obj, post_url_continue=None):
+        return super(CarAdmin, self).response_add(
+            request, obj, post_url_continue=reverse('admin:admin_custom_urls_car_history', args=[obj.pk]))
+
+
 admin.site.register(Action, ActionAdmin)
+admin.site.register(Person, PersonAdmin)
+admin.site.register(Car, CarAdmin)

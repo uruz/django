@@ -90,9 +90,6 @@ Model field                      Form field
 
 ``NullBooleanField``             ``CharField``
 
-``PhoneNumberField``             ``USPhoneNumberField``
-                                 (from ``django.contrib.localflavor.us``)
-
 ``PositiveIntegerField``         ``IntegerField``
 
 ``PositiveSmallIntegerField``    ``IntegerField``
@@ -192,6 +189,8 @@ we'll discuss in a moment.)::
         name = forms.CharField(max_length=100)
         authors = forms.ModelMultipleChoiceField(queryset=Author.objects.all())
 
+.. _modelform-is-valid-and-errors:
+
 The ``is_valid()`` method and ``errors``
 ----------------------------------------
 
@@ -200,7 +199,9 @@ The first time you call ``is_valid()`` or access the ``errors`` attribute of a
 well as :ref:`model validation <validating-objects>`. This has the side-effect
 of cleaning the model you pass to the ``ModelForm`` constructor. For instance,
 calling ``is_valid()`` on your form will convert any date fields on your model
-to actual date objects.
+to actual date objects. If form validation fails, only some of the updates
+may be applied. For this reason, you'll probably want to avoid reusing the
+model instance passed to the form, especially if validation fails.
 
 
 The ``save()`` method
@@ -211,7 +212,9 @@ method. This method creates and saves a database object from the data
 bound to the form. A subclass of ``ModelForm`` can accept an existing
 model instance as the keyword argument ``instance``; if this is
 supplied, ``save()`` will update that instance. If it's not supplied,
-``save()`` will create a new instance of the specified model::
+``save()`` will create a new instance of the specified model:
+
+.. code-block:: python
 
     # Create a form instance from POST data.
     >>> f = ArticleForm(request.POST)
@@ -230,8 +233,10 @@ supplied, ``save()`` will update that instance. If it's not supplied,
     >>> f = ArticleForm(request.POST, instance=a)
     >>> f.save()
 
-Note that ``save()`` will raise a ``ValueError`` if the data in the form
-doesn't validate -- i.e., if form.errors evaluates to True.
+Note that if the form :ref:`hasn't been validated
+<modelform-is-valid-and-errors>`, calling ``save()`` will do so by checking
+``form.errors``. A ``ValueError`` will be raised if the data in the form
+doesn't validate -- i.e., if ``form.errors`` evaluates to ``True``.
 
 This ``save()`` method accepts an optional ``commit`` keyword argument, which
 accepts either ``True`` or ``False``. If you call ``save()`` with
@@ -309,18 +314,18 @@ model fields:
    to exclude from the form.
 
 For example, if you want a form for the ``Author`` model (defined
-above) that includes only the ``name`` and ``title`` fields, you would
+above) that includes only the ``name`` and ``birth_date`` fields, you would
 specify ``fields`` or ``exclude`` like this::
 
     class PartialAuthorForm(ModelForm):
         class Meta:
             model = Author
-            fields = ('name', 'title')
+            fields = ('name', 'birth_date')
 
     class PartialAuthorForm(ModelForm):
         class Meta:
             model = Author
-            exclude = ('birth_date',)
+            exclude = ('title',)
 
 Since the Author model has only 3 fields, 'name', 'title', and
 'birth_date', the forms above will contain exactly the same fields.
@@ -539,10 +544,39 @@ for more on how field cleaning and validation work. Also, your model's
 :ref:`Validating objects <validating-objects>` for more information on the
 model's ``clean()`` hook.
 
+.. _modelforms-factory:
+
+ModelForm factory function
+--------------------------
+
+You can create forms from a given model using the standalone function
+:class:`~django.forms.models.modelform_factory`, instead of using a class
+definition. This may be more convenient if you do not have many customizations
+to make::
+
+    >>> from django.forms.models import modelform_factory
+    >>> BookForm = modelform_factory(Book)
+
+This can also be used to make simple modifications to existing forms, for
+example by specifying which fields should be displayed::
+
+    >>> Form = modelform_factory(Book, form=BookForm, fields=("author",))
+
+... or which fields should be excluded::
+
+    >>> Form = modelform_factory(Book, form=BookForm, exclude=("title",))
+
+You can also specify the widgets to be used for a given field::
+
+    >>> from django.forms import Textarea
+    >>> Form = modelform_factory(Book, form=BookForm, widgets={"title": Textarea()})
+
 .. _model-formsets:
 
 Model formsets
 ==============
+
+.. class:: models.BaseModelFormSet
 
 Like :doc:`regular formsets </topics/forms/formsets>`, Django provides a couple
 of enhanced formset classes that make it easy to work with Django models. Let's
@@ -567,9 +601,10 @@ with the ``Author`` model. It works just like a regular formset::
     <tr><th><label for="id_form-0-birth_date">Birth date:</label></th><td><input type="text" name="form-0-birth_date" id="id_form-0-birth_date" /><input type="hidden" name="form-0-id" id="id_form-0-id" /></td></tr>
 
 .. note::
-    ``modelformset_factory`` uses ``formset_factory`` to generate formsets.
-    This means that a model formset is just an extension of a basic formset
-    that knows how to interact with a particular model.
+
+    :func:`~django.forms.models.modelformset_factory` uses ``formset_factory``
+    to generate formsets. This means that a model formset is just an extension
+    of a basic formset that knows how to interact with a particular model.
 
 Changing the queryset
 ---------------------
@@ -618,13 +653,12 @@ exclude::
 Providing initial values
 ------------------------
 
-.. versionadded:: 1.4
-
 As with regular formsets, it's possible to :ref:`specify initial data
 <formsets-initial-data>` for forms in the formset by specifying an ``initial``
 parameter when instantiating the model formset class returned by
-``modelformset_factory``. However, with model formsets, the initial values only
-apply to extra forms, those that aren't bound to an existing object instance.
+:func:`~django.forms.models.modelformset_factory`. However, with model
+formsets, the initial values only apply to extra forms, those that aren't bound
+to an existing object instance.
 
 .. _saving-objects-in-the-formset:
 
@@ -670,7 +704,8 @@ Limiting the number of editable objects
 ---------------------------------------
 
 As with regular formsets, you can use the ``max_num`` and ``extra`` parameters
-to ``modelformset_factory`` to limit the number of extra forms displayed.
+to :func:`~django.forms.models.modelformset_factory` to limit the number of
+extra forms displayed.
 
 ``max_num`` does not prevent existing objects from being displayed::
 
@@ -845,7 +880,9 @@ a particular author, you could do this::
     >>> formset = BookFormSet(instance=author)
 
 .. note::
-    ``inlineformset_factory`` uses ``modelformset_factory`` and marks
+
+    ``inlineformset_factory`` uses
+    :func:`~django.forms.models.modelformset_factory` and marks
     ``can_delete=True``.
 
 .. seealso::

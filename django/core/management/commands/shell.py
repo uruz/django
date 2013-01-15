@@ -19,8 +19,10 @@ class Command(NoArgsCommand):
 
     def ipython(self):
         try:
-            from IPython import embed
-            embed()
+            from IPython.frontend.terminal.ipapp import TerminalIPythonApp
+            app = TerminalIPythonApp.instance()
+            app.initialize(argv=[])
+            app.start()
         except ImportError:
             # IPython < 0.11
             # Explicitly pass an empty list as arguments, because otherwise
@@ -80,14 +82,14 @@ class Command(NoArgsCommand):
                 readline.parse_and_bind("tab:complete")
 
             # We want to honor both $PYTHONSTARTUP and .pythonrc.py, so follow system
-            # conventions and get $PYTHONSTARTUP first then import user.
+            # conventions and get $PYTHONSTARTUP first then .pythonrc.py.
             if not use_plain:
-                pythonrc = os.environ.get("PYTHONSTARTUP")
-                if pythonrc and os.path.isfile(pythonrc):
-                    try:
-                        execfile(pythonrc)
-                    except NameError:
-                        pass
-                # This will import .pythonrc.py as a side-effect
-                import user
+                for pythonrc in (os.environ.get("PYTHONSTARTUP"),
+                                 os.path.expanduser('~/.pythonrc.py')):
+                    if pythonrc and os.path.isfile(pythonrc):
+                        try:
+                            with open(pythonrc) as handle:
+                                exec(compile(handle.read(), pythonrc, 'exec'))
+                        except NameError:
+                            pass
             code.interact(local=imported_objects)

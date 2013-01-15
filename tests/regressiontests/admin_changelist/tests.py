@@ -6,6 +6,7 @@ from django.contrib import admin
 from django.contrib.admin.options import IncorrectLookupParameters
 from django.contrib.admin.views.main import ChangeList, SEARCH_VAR, ALL_VAR
 from django.contrib.auth.models import User
+from django.core.urlresolvers import reverse
 from django.template import Context, Template
 from django.test import TestCase
 from django.test.client import RequestFactory
@@ -16,7 +17,7 @@ from .admin import (ChildAdmin, QuartetAdmin, BandAdmin, ChordsBandAdmin,
     GroupAdmin, ParentAdmin, DynamicListDisplayChildAdmin,
     DynamicListDisplayLinksChildAdmin, CustomPaginationAdmin,
     FilteredChildAdmin, CustomPaginator, site as custom_site,
-    SwallowAdmin)
+    SwallowAdmin, DynamicListFilterChildAdmin)
 from .models import (Event, Child, Parent, Genre, Band, Musician, Group,
     Quartet, Membership, ChordsMusician, ChordsBand, Invitation, Swallow,
     UnorderedObject, OrderedObject)
@@ -65,7 +66,8 @@ class ChangeListTests(TestCase):
         template = Template('{% load admin_list %}{% spaceless %}{% result_list cl %}{% endspaceless %}')
         context = Context({'cl': cl})
         table_output = template.render(context)
-        row_html = '<tbody><tr class="row1"><th><a href="%d/">name</a></th><td class="nowrap">(None)</td></tr></tbody>' % new_child.id
+        link = reverse('admin:admin_changelist_child_change', args=(new_child.id,))
+        row_html = '<tbody><tr class="row1"><th><a href="%s">name</a></th><td class="nowrap">(None)</td></tr></tbody>' % link
         self.assertFalse(table_output.find(row_html) == -1,
             'Failed to find expected row element: %s' % table_output)
 
@@ -87,7 +89,8 @@ class ChangeListTests(TestCase):
         template = Template('{% load admin_list %}{% spaceless %}{% result_list cl %}{% endspaceless %}')
         context = Context({'cl': cl})
         table_output = template.render(context)
-        row_html = '<tbody><tr class="row1"><th><a href="%d/">name</a></th><td class="nowrap">Parent object</td></tr></tbody>' % new_child.id
+        link = reverse('admin:admin_changelist_child_change', args=(new_child.id,))
+        row_html = '<tbody><tr class="row1"><th><a href="%s">name</a></th><td class="nowrap">Parent object</td></tr></tbody>' % link
         self.assertFalse(table_output.find(row_html) == -1,
             'Failed to find expected row element: %s' % table_output)
 
@@ -119,12 +122,11 @@ class ChangeListTests(TestCase):
         table_output = template.render(context)
         # make sure that hidden fields are in the correct place
         hiddenfields_div = '<div class="hiddenfields"><input type="hidden" name="form-0-id" value="%d" id="id_form-0-id" /></div>' % new_child.id
-        self.assertFalse(table_output.find(hiddenfields_div) == -1,
-            'Failed to find hidden fields in: %s' % table_output)
+        self.assertInHTML(hiddenfields_div, table_output, msg_prefix='Failed to find hidden fields')
+
         # make sure that list editable fields are rendered in divs correctly
         editable_name_field = '<input name="form-0-name" value="name" class="vTextField" maxlength="30" type="text" id="id_form-0-name" />'
-        self.assertFalse('<td>%s</td>' % editable_name_field == -1,
-            'Failed to find "name" list_editable field in: %s' % table_output)
+        self.assertInHTML('<td>%s</td>' % editable_name_field, table_output, msg_prefix='Failed to find "name" list_editable field')
 
     def test_result_list_editable(self):
         """
@@ -425,7 +427,8 @@ class ChangeListTests(TestCase):
         request = self._mocked_authenticated_request('/child/', superuser)
         response = m.changelist_view(request)
         for i in range(1, 10):
-            self.assertContains(response, '<a href="%s/">%s</a>' % (i, i))
+            link = reverse('admin:admin_changelist_child_change', args=(i,))
+            self.assertContains(response, '<a href="%s">%s</a>' % (link, i))
 
         list_display = m.get_list_display(request)
         list_display_links = m.get_list_display_links(request, list_display)
@@ -537,3 +540,26 @@ class ChangeListTests(TestCase):
         check_results_order()
         OrderedObjectAdmin.ordering = ['id', 'bool']
         check_results_order(ascending=True)
+
+    def test_dynamic_list_filter(self):
+        """
+        Regression tests for ticket #17646: dynamic list_filter support.
+        """
+        parent = Parent.objects.create(name='parent')
+        for i in range(10):
+            Child.objects.create(name='child %s' % i, parent=parent)
+
+        user_noparents = self._create_superuser('noparents')
+        user_parents = self._create_superuser('parents')
+
+        # Test with user 'noparents'
+        m =  DynamicListFilterChildAdmin(Child, admin.site)
+        request = self._mocked_authenticated_request('/child/', user_noparents)
+        response = m.changelist_view(request)
+        self.assertEqual(response.context_data['cl'].list_filter, ['name', 'age'])
+
+        # Test with user 'parents'
+        m = DynamicListFilterChildAdmin(Child, admin.site)
+        request = self._mocked_authenticated_request('/child/', user_parents)
+        response = m.changelist_view(request)
+        self.assertEqual(response.context_data['cl'].list_filter, ('parent', 'name', 'age'))

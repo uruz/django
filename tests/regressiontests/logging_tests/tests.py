@@ -1,14 +1,24 @@
 from __future__ import unicode_literals
 
 import copy
+import logging
+import sys
 import warnings
 
-from django.conf import compat_patch_logging_config
+from django.conf import LazySettings
 from django.core import mail
 from django.test import TestCase, RequestFactory
 from django.test.utils import override_settings
-from django.utils.log import CallbackFilter, RequireDebugFalse, getLogger
+from django.utils.encoding import force_text
+from django.utils.log import CallbackFilter, RequireDebugFalse, RequireDebugTrue
+from django.utils.six import StringIO
+from django.utils.unittest import skipUnless
 
+from ..admin_scripts.tests import AdminScriptTestCase
+
+from .logconfig import MyEmailBackend
+
+PYVERS = sys.version_info[:2]
 
 # logging config prior to using filter with mail_admins
 OLD_LOGGING = {
@@ -30,46 +40,10 @@ OLD_LOGGING = {
 }
 
 
-class PatchLoggingConfigTest(TestCase):
-    """
-    Tests for backward-compat shim for #16288. These tests should be removed in
-    Django 1.6 when that shim and DeprecationWarning are removed.
-
-    """
-    def test_filter_added(self):
-        """
-        Test that debug-false filter is added to mail_admins handler if it has
-        no filters.
-
-        """
-        config = copy.deepcopy(OLD_LOGGING)
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            compat_patch_logging_config(config)
-            self.assertEqual(len(w), 1)
-
-        self.assertEqual(
-            config["handlers"]["mail_admins"]["filters"],
-            ['require_debug_false'])
-
-    def test_filter_configuration(self):
-        """
-        Test that the auto-added require_debug_false filter is an instance of
-        `RequireDebugFalse` filter class.
-
-        """
-        config = copy.deepcopy(OLD_LOGGING)
-        with warnings.catch_warnings(record=True):
-            compat_patch_logging_config(config)
-
-        flt = config["filters"]["require_debug_false"]
-        self.assertEqual(flt["()"], "django.utils.log.RequireDebugFalse")
-
+class LoggingFiltersTest(TestCase):
     def test_require_debug_false_filter(self):
         """
         Test the RequireDebugFalse filter class.
-
         """
         filter_ = RequireDebugFalse()
 
@@ -79,31 +53,71 @@ class PatchLoggingConfigTest(TestCase):
         with self.settings(DEBUG=False):
             self.assertEqual(filter_.filter("record is not used"), True)
 
-    def test_no_patch_if_filters_key_exists(self):
+    def test_require_debug_true_filter(self):
         """
-        Test that the logging configuration is not modified if the mail_admins
-        handler already has a "filters" key.
-
+        Test the RequireDebugTrue filter class.
         """
-        config = copy.deepcopy(OLD_LOGGING)
-        config["handlers"]["mail_admins"]["filters"] = []
-        new_config = copy.deepcopy(config)
-        compat_patch_logging_config(new_config)
+        filter_ = RequireDebugTrue()
 
-        self.assertEqual(config, new_config)
+        with self.settings(DEBUG=True):
+            self.assertEqual(filter_.filter("record is not used"), True)
 
-    def test_no_patch_if_no_mail_admins_handler(self):
+        with self.settings(DEBUG=False):
+            self.assertEqual(filter_.filter("record is not used"), False)
+
+class DefaultLoggingTest(TestCase):
+    def setUp(self):
+        self.logger = logging.getLogger('django')
+        self.old_stream = self.logger.handlers[0].stream
+
+    def tearDown(self):
+        self.logger.handlers[0].stream = self.old_stream
+
+    def test_django_logger(self):
         """
-        Test that the logging configuration is not modified if the mail_admins
-        handler is not present.
-
+        The 'django' base logger only output anything when DEBUG=True.
         """
-        config = copy.deepcopy(OLD_LOGGING)
-        config["handlers"].pop("mail_admins")
-        new_config = copy.deepcopy(config)
-        compat_patch_logging_config(new_config)
+        output = StringIO()
+        self.logger.handlers[0].stream = output
+        self.logger.error("Hey, this is an error.")
+        self.assertEqual(output.getvalue(), '')
 
-        self.assertEqual(config, new_config)
+        with self.settings(DEBUG=True):
+            self.logger.error("Hey, this is an error.")
+            self.assertEqual(output.getvalue(), 'Hey, this is an error.\n')
+
+@skipUnless(PYVERS > (2,6), "warnings captured only in Python >= 2.7")
+class WarningLoggerTests(TestCase):
+    """
+    Tests that warnings output for DeprecationWarnings is enabled
+    and captured to the logging system
+    """
+    def setUp(self):
+        # this convoluted setup is to avoid printing this deprecation to
+        # stderr during test running - as the test runner forces deprecations
+        # to be displayed at the global py.warnings level
+        self.logger = logging.getLogger('py.warnings')
+        self.outputs = []
+        self.old_streams = []
+        for handler in self.logger.handlers:
+            self.old_streams.append(handler.stream)
+            self.outputs.append(StringIO())
+            handler.stream = self.outputs[-1]
+
+    def tearDown(self):
+        for i, handler in enumerate(self.logger.handlers):
+            self.logger.handlers[i].stream = self.old_streams[i]
+
+    @override_settings(DEBUG=True)
+    def test_warnings_capture(self):
+        warnings.warn('Foo Deprecated', DeprecationWarning)
+        output = force_text(self.outputs[0].getvalue())
+        self.assertTrue('Foo Deprecated' in output)
+
+    def test_warnings_capture_debug_false(self):
+        warnings.warn('Foo Deprecated', DeprecationWarning)
+        output = force_text(self.outputs[0].getvalue())
+        self.assertFalse('Foo Deprecated' in output)
 
 
 class CallbackFilterTest(TestCase):
@@ -128,6 +142,7 @@ class CallbackFilterTest(TestCase):
 
 
 class AdminEmailHandlerTest(TestCase):
+    logger = logging.getLogger('django.request')
 
     def get_admin_email_handler(self, logger):
         # Inspired from regressiontests/views/views.py: send_log()
@@ -153,14 +168,13 @@ class AdminEmailHandlerTest(TestCase):
         token1 = 'ping'
         token2 = 'pong'
 
-        logger = getLogger('django.request')
-        admin_email_handler = self.get_admin_email_handler(logger)
+        admin_email_handler = self.get_admin_email_handler(self.logger)
         # Backup then override original filters
         orig_filters = admin_email_handler.filters
         try:
             admin_email_handler.filters = []
 
-            logger.error(message, token1, token2)
+            self.logger.error(message, token1, token2)
 
             self.assertEqual(len(mail.outbox), 1)
             self.assertEqual(mail.outbox[0].to, ['admin@example.com'])
@@ -184,15 +198,14 @@ class AdminEmailHandlerTest(TestCase):
         token1 = 'ping'
         token2 = 'pong'
 
-        logger = getLogger('django.request')
-        admin_email_handler = self.get_admin_email_handler(logger)
+        admin_email_handler = self.get_admin_email_handler(self.logger)
         # Backup then override original filters
         orig_filters = admin_email_handler.filters
         try:
             admin_email_handler.filters = []
             rf = RequestFactory()
             request = rf.get('/')
-            logger.error(message, token1, token2,
+            self.logger.error(message, token1, token2,
                 extra={
                     'status_code': 403,
                     'request': request,
@@ -222,8 +235,7 @@ class AdminEmailHandlerTest(TestCase):
 
         self.assertEqual(len(mail.outbox), 0)
 
-        logger = getLogger('django.request')
-        logger.error(message)
+        self.logger.error(message)
 
         self.assertEqual(len(mail.outbox), 1)
         self.assertFalse('\n' in mail.outbox[0].subject)
@@ -247,8 +259,83 @@ class AdminEmailHandlerTest(TestCase):
 
         self.assertEqual(len(mail.outbox), 0)
 
-        logger = getLogger('django.request')
-        logger.error(message)
+        self.logger.error(message)
 
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].subject, expected_subject)
+
+    @override_settings(
+            ADMINS=(('admin', 'admin@example.com'),),
+            DEBUG=False,
+        )
+    def test_uses_custom_email_backend(self):
+        """
+        Refs #19325
+        """
+        message = 'All work and no play makes Jack a dull boy'
+        admin_email_handler = self.get_admin_email_handler(self.logger)
+        mail_admins_called = {'called': False}
+
+        def my_mail_admins(*args, **kwargs):
+            connection = kwargs['connection']
+            self.assertTrue(isinstance(connection, MyEmailBackend))
+            mail_admins_called['called'] = True
+
+        # Monkeypatches
+        orig_mail_admins = mail.mail_admins
+        orig_email_backend = admin_email_handler.email_backend
+        mail.mail_admins = my_mail_admins
+        admin_email_handler.email_backend = (
+            'regressiontests.logging_tests.logconfig.MyEmailBackend')
+
+        try:
+            self.logger.error(message)
+            self.assertTrue(mail_admins_called['called'])
+        finally:
+            # Revert Monkeypatches
+            mail.mail_admins = orig_mail_admins
+            admin_email_handler.email_backend = orig_email_backend
+
+
+class SettingsConfigTest(AdminScriptTestCase):
+    """
+    Test that accessing settings in a custom logging handler does not trigger
+    a circular import error.
+    """
+    def setUp(self):
+        log_config = """{
+    'version': 1,
+    'handlers': {
+        'custom_handler': {
+            'level': 'INFO',
+            'class': 'logging_tests.logconfig.MyHandler',
+        }
+    }
+}"""
+        self.write_settings('settings.py', sdict={'LOGGING': log_config})
+
+    def tearDown(self):
+        self.remove_settings('settings.py')
+
+    def test_circular_dependency(self):
+        # validate is just an example command to trigger settings configuration
+        out, err = self.run_manage(['validate'])
+        self.assertNoOutput(err)
+        self.assertOutput(out, "0 errors found")
+
+
+def dictConfig(config):
+    dictConfig.called = True
+dictConfig.called = False
+
+
+class SettingsConfigureLogging(TestCase):
+    """
+    Test that calling settings.configure() initializes the logging
+    configuration.
+    """
+    def test_configure_initializes_logging(self):
+        settings = LazySettings()
+        settings.configure(
+            LOGGING_CONFIG='regressiontests.logging_tests.tests.dictConfig')
+        self.assertTrue(dictConfig.called)

@@ -260,10 +260,17 @@ class Input(Widget):
             final_attrs['value'] = force_text(self._format_value(value))
         return format_html('<input{0} />', flatatt(final_attrs))
 
+
 class TextInput(Input):
     input_type = 'text'
 
-class PasswordInput(Input):
+    def __init__(self, attrs=None):
+        if attrs is not None:
+            self.input_type = attrs.pop('type', self.input_type)
+        super(TextInput, self).__init__(attrs)
+
+
+class PasswordInput(TextInput):
     input_type = 'password'
 
     def __init__(self, attrs=None, render_value=False):
@@ -396,13 +403,12 @@ class Textarea(Widget):
     def render(self, name, value, attrs=None):
         if value is None: value = ''
         final_attrs = self.build_attrs(attrs, name=name)
-        return format_html('<textarea{0}>{1}</textarea>',
+        return format_html('<textarea{0}>\r\n{1}</textarea>',
                            flatatt(final_attrs),
                            force_text(value))
 
-class DateInput(Input):
-    input_type = 'text'
 
+class DateInput(TextInput):
     def __init__(self, attrs=None, format=None):
         super(DateInput, self).__init__(attrs)
         if format:
@@ -431,9 +437,8 @@ class DateInput(Input):
             pass
         return super(DateInput, self)._has_changed(self._format_value(initial), data)
 
-class DateTimeInput(Input):
-    input_type = 'text'
 
+class DateTimeInput(TextInput):
     def __init__(self, attrs=None, format=None):
         super(DateTimeInput, self).__init__(attrs)
         if format:
@@ -462,9 +467,8 @@ class DateTimeInput(Input):
             pass
         return super(DateTimeInput, self)._has_changed(self._format_value(initial), data)
 
-class TimeInput(Input):
-    input_type = 'text'
 
+class TimeInput(TextInput):
     def __init__(self, attrs=None, format=None):
         super(TimeInput, self).__init__(attrs)
         if format:
@@ -507,11 +511,7 @@ class CheckboxInput(Widget):
 
     def render(self, name, value, attrs=None):
         final_attrs = self.build_attrs(attrs, type='checkbox', name=name)
-        try:
-            result = self.check_test(value)
-        except: # Silently catch exceptions
-            result = False
-        if result:
+        if self.check_test(value):
             final_attrs['checked'] = 'checked'
         if not (value is True or value is False or value is None or value == ''):
             # Only add the 'value' attribute if a value is non-empty.
@@ -525,14 +525,17 @@ class CheckboxInput(Widget):
             return False
         value = data.get(name)
         # Translate true and false strings to boolean values.
-        values =  {'true': True, 'false': False}
+        values = {'true': True, 'false': False}
         if isinstance(value, six.string_types):
             value = values.get(value.lower(), value)
-        return value
+        return bool(value)
 
     def _has_changed(self, initial, data):
         # Sometimes data or initial could be None or '' which should be the
         # same thing as False.
+        if initial == 'False':
+            # show_hidden_initial may have transformed False to 'False'
+            initial = False
         return bool(initial) != bool(data)
 
 class Select(Widget):
@@ -751,17 +754,17 @@ class RadioSelect(Select):
 class CheckboxSelectMultiple(SelectMultiple):
     def render(self, name, value, attrs=None, choices=()):
         if value is None: value = []
-        has_id = attrs and 'id' in attrs
         final_attrs = self.build_attrs(attrs, name=name)
+        id_ = final_attrs.get('id', None)
         output = ['<ul>']
         # Normalize to strings
         str_values = set([force_text(v) for v in value])
         for i, (option_value, option_label) in enumerate(chain(self.choices, choices)):
             # If an ID attribute was given, add a numeric index as a suffix,
             # so that the checkboxes don't all have the same ID attribute.
-            if has_id:
-                final_attrs = dict(final_attrs, id='%s_%s' % (attrs['id'], i))
-                label_for = format_html(' for="{0}"', final_attrs['id'])
+            if id_:
+                final_attrs = dict(final_attrs, id='%s_%s' % (id_, i))
+                label_for = format_html(' for="{0}_{1}"', id_, i)
             else:
                 label_for = ''
 

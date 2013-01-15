@@ -120,7 +120,7 @@ class Command(NoArgsCommand):
                                                   dry_run=self.dry_run)
             for original_path, processed_path, processed in processor:
                 if processed:
-                    self.log("Post-processed '%s' as '%s" %
+                    self.log("Post-processed '%s' as '%s'" %
                              (original_path, processed_path), level=1)
                     self.post_processed_files.append(original_path)
                 else:
@@ -192,7 +192,7 @@ Type 'yes' to continue, or 'no' to cancel: """
 
     def clear_dir(self, path):
         """
-        Deletes the given relative path using the destinatin storage backend.
+        Deletes the given relative path using the destination storage backend.
         """
         dirs, files = self.storage.listdir(path)
         for f in files:
