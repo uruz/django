@@ -20,25 +20,26 @@
 
 (function($) {
 
-    $.fn.datetimeshortcuts = function(options) {
+    $.fn.datetimeshortcuts = function(configuration) {
         // variables set in base.html
         var datetimeshortcuts_defaults = $('body').data(
             'datetimeshortcuts_defaults');
 
         // extend default settings with user options
-        var o = $.extend({
+        var options = $.extend({
                 admin_media_prefix: $('body').data('admin_media_prefix')
             },
             $.fn.datetimeshortcuts.defaults,
             datetimeshortcuts_defaults,
-            options);
+            configuration
+        );
 
         // Check admin_media_prefix setting:
         // usually set in admin/base.html template, but if that was overridden,
         // it might be missing. Set it to something clearly invalid so that
         // somebody might notice it.
-        if (o.admin_media_prefix === undefined) {
-            o.admin_media_prefix = '/missing-admin-media-prefix/';
+        if (options.admin_media_prefix === undefined) {
+            options.admin_media_prefix = '/missing-admin-media-prefix/';
         }
 
 
@@ -71,24 +72,24 @@
         // add shortcuts for date fields
         var add_calendar = function(element) {
             // insert span.datetimeshortcuts
-            var shortcuts = $('<span class="' + o.class_shortcuts + '">')
+            var shortcuts = $('<span class="' + options.class_shortcuts + '">')
                 .insertAfter(element);
 
             // insert today link
-            if (o.enable_today) {
+            if (options.enable_today) {
                 shortcuts.append(
-                    ' <a href="#" class="' + o.class_today + '">' +
+                    ' <a href="#" class="' + options.class_today + '">' +
                     gettext('Today') + '</a>');
-                if (o.enable_calendar) {
+                if (options.enable_calendar) {
                     shortcuts.append(" | ");
                 }
             }
 
             // insert calendar link
-            if (o.enable_calendar) {
-                $('<a href="#" class="' + o.class_calendar+'"></a>')
+            if (options.enable_calendar) {
+                $('<a href="#" class="' + options.class_calendar+'"></a>')
                     .appendTo(shortcuts)
-                    .append('<img src="' + o.admin_media_prefix +
+                    .append('<img src="' + options.admin_media_prefix +
                             'img/icon_calendar.gif" alt="' +
                             gettext('Calendar') + '" />');
             }
@@ -97,23 +98,23 @@
         // add shortcuts for time fields
         var add_clock = function(element) {
             // insert span.datetimeshortcuts
-            var shortcuts = $('<span class="' + o.class_shortcuts + '">')
+            var shortcuts = $('<span class="' + options.class_shortcuts + '">')
                 .insertAfter(element);
 
             // insert now link
-            if (o.enable_now) {
-                shortcuts.append(' <a href="#" class="' + o.class_now + '">' +
+            if (options.enable_now) {
+                shortcuts.append(' <a href="#" class="' + options.class_now + '">' +
                                  gettext('Now') + '</a>');
-                if (o.enable_clock) {
+                if (options.enable_clock) {
                     shortcuts.append(" | ");
                 }
             }
 
             // insert clock link
-            if (o.enable_clock) {
-                $('<a href="#" class="' + o.class_clock + '"></a>')
+            if (options.enable_clock) {
+                $('<a href="#" class="' + options.class_clock + '"></a>')
                     .appendTo(shortcuts)
-                    .append('<img src="' + o.admin_media_prefix +
+                    .append('<img src="' + options.admin_media_prefix +
                             'img/icon_clock.gif" alt="' +
                             gettext('Clock') + '" />');
             }
@@ -194,20 +195,20 @@
         // init one calendar per fieldset
         var init_calendar_box = function(fieldset) {
             // insert calendar box if not there
-            if (fieldset.find('.'+o.class_calendarbox).length === 0) {
+            if (fieldset.find('.'+options.class_calendarbox).length === 0) {
 
-                $('<div class="'+o.class_calendarbox+' module">'  +
+                $('<div class="'+options.class_calendarbox+' module">'  +
                     '  <div>'+
                     '    <a href="#" class="calendarnav-previous"><</a>' +
                     '    <a href="#" class="calendarnav-next">></a>' +
                     '  </div>' +
                     '  <div class="calendar_table calendar"></div>' +
                     '  <div class="calendar-shortcuts">'+
-                    '    <a href="#" class="' + o.class_today + ' yesterday">'+
+                    '    <a href="#" class="' + options.class_today + ' yesterday">'+
                             gettext('Yesterday') + '</a> | ' +
-                        '<a href="#" class="' + o.class_today + '">' +
+                        '<a href="#" class="' + options.class_today + '">' +
                             gettext('Today') + '</a> | ' +
-                        '<a href="#" class="' + o.class_today + ' tomorrow">' +
+                        '<a href="#" class="' + options.class_today + ' tomorrow">' +
                             gettext('Tomorrow') + '</a>' +
                     '  </div>' +
                     '  <p class="calendar-cancel"><a href="#">' +
@@ -216,12 +217,12 @@
                     .appendTo(fieldset).css('position', 'absolute').hide();
 
                 // prev/next event handlers
-                fieldset.find('.'+o.class_calendarbox)
+                fieldset.find('.'+options.class_calendarbox)
                     .delegate('.calendarnav-previous, .calendarnav-next',
                               'click', function(event) {
                         var func = $(this).is('.calendarnav-next') ?
                             'calendar_next' : 'calendar_previous';
-                        $(this).parents('.'+o.class_calendarbox).trigger(func);
+                        $(this).parents('.'+options.class_calendarbox).trigger(func);
                         event.preventDefault();
                         event.stopPropagation();
                     })
@@ -244,10 +245,10 @@
         // init one clock box per fieldset
         var init_clock_box = function(fieldset) {
             // insert clock box if not there
-            if (fieldset.find('.'+o.class_clockbox).length === 0) {
+            if (fieldset.find('.'+options.class_clockbox).length === 0) {
 
                 var timelist = $(
-                    '<div class="' + o.class_clockbox + ' module">'  +
+                    '<div class="' + options.class_clockbox + ' module">'  +
                     '  <h2>' + gettext('Choose a time') + '</h2>' +
                     '  <ul class="timelist"></ul>' +
                     '  <p class="clock-cancel"><a href="#">' +
@@ -270,7 +271,7 @@
                     .find('a:last').data('time', new Date(1970,1,1,12,0));
 
                 // time links event handlers
-                fieldset.find('.'+o.class_clockbox)
+                fieldset.find('.'+options.class_clockbox)
                     .delegate('li a', 'click', function(event) {
                         fieldset.trigger('callback_clock',
                                          $(event.target).data('time'));
@@ -298,10 +299,10 @@
                     fieldset.trigger('hide_calendar');
 
                     var target = $(event.target);
-                    var calendar = fieldset.children('.'+o.class_calendarbox);
+                    var calendar = fieldset.children('.'+options.class_calendarbox);
                     var field = target
-                        .parents('.'+o.class_shortcuts)
-                        .prev(o.date_fields);
+                        .parents('.'+options.class_shortcuts)
+                        .prev(options.date_fields);
 
                     // Check current field value for valid date
                     // and open calendar with that date selected
@@ -314,7 +315,7 @@
                         // That should be enough for every locale included with
                         // django, but still may not work with custom format
                         // files.
-                        var format = o.date_input_format;
+                        var format = options.date_input_format;
                         var regexes = {
                             'Y' : '(\\d{4})',
                             'y' : '(\\d{2})',
@@ -462,7 +463,7 @@
                 // hide calendar
                 'hide_calendar.datetimeshortcuts': function(event) {
                     $(event.target)
-                        .children('.' + o.class_calendarbox)
+                        .children('.' + options.class_calendarbox)
                         .removeData('calendar_date_field')
                         .removeData('calendar_date_sel')
                         .removeData('calendar_date_show')
@@ -476,10 +477,10 @@
                     fieldset.trigger('hide_calendar.datetimeshortcuts');
 
                     var target = $(event.target);
-                    var clock = fieldset.children('.' + o.class_clockbox);
+                    var clock = fieldset.children('.' + options.class_clockbox);
                     var field = target
-                        .parents('.' + o.class_shortcuts)
-                        .prev(o.time_fields);
+                        .parents('.' + options.class_shortcuts)
+                        .prev(options.time_fields);
 
                     // open clock
                     clock
@@ -521,7 +522,7 @@
                 // hide clock
                 'hide_clock.datetimeshortcuts': function(event) {
                     $(event.target)
-                        .children('.'+o.class_clockbox)
+                        .children('.'+options.class_clockbox)
                         .removeData('clock_time_field')
                         .hide();
                     $('document').unbind('.datetimeshortcuts');
@@ -530,9 +531,9 @@
                 // calendar callback
                 'callback_calendar.datetimeshortcuts': function(event, date) {
                     $(event.target)
-                        .find('.'+o.class_calendarbox)
+                        .find('.'+options.class_calendarbox)
                         .data('calendar_date_field')
-                        .val(date.strftime(o.date_input_format))
+                        .val(date.strftime(options.date_input_format))
                         .focus();
                     fieldset.trigger('hide_calendar.datetimeshortcuts');
                 },
@@ -543,16 +544,16 @@
                     var d = new Date();
                     d.setDate(d.getDate() + days_offset);
                     $(event.target)
-                       .val(d.strftime(o.date_input_format))
+                       .val(d.strftime(options.date_input_format))
                        .focus();
                 },
 
                 // clock callback
                 'callback_clock.datetimeshortcuts': function(event, time) {
                     $(event.target)
-                        .find('.'+o.class_clockbox)
+                        .find('.'+options.class_clockbox)
                         .data('clock_time_field')
-                        .val(time.strftime(o.time_input_format))
+                        .val(time.strftime(options.time_input_format))
                         .focus();
                     fieldset.trigger('hide_clock.datetimeshortcuts');
                 },
@@ -561,7 +562,7 @@
                 'callback_now.datetimeshortcuts': function(event) {
                     var d = new Date();
                     $(event.target)
-                        .val(d.strftime(o.time_input_format))
+                        .val(d.strftime(options.time_input_format))
                         .focus();
                 }
             });
@@ -570,11 +571,11 @@
             /* --- add datetime shortcut widgets --------------------------- */
 
             // add shortcuts to date fields
-            fieldset.find(o.date_fields).each(function() {
+            fieldset.find(options.date_fields).each(function() {
                 add_calendar($(this));
             });
             // add shortcuts to time fields
-            fieldset.find(o.time_fields).each(function() {
+            fieldset.find(options.time_fields).each(function() {
                 add_clock($(this));
             });
             // create calendar and clock widgets
@@ -586,7 +587,7 @@
             fieldset
 
                 // click on calendar
-                .delegate('.' + o.class_shortcuts + ' .' + o.class_calendar,
+                .delegate('.' + options.class_shortcuts + ' .' + options.class_calendar,
                           'click.datetimeshortcuts', function(event) {
                     $(event.target).trigger('show_calendar.datetimeshortcuts');
                     // prevent following link
@@ -595,12 +596,12 @@
                 })
 
                 // click on today link
-                .delegate('.' + o.class_shortcuts + ' .' + o.class_today,
+                .delegate('.' + options.class_shortcuts + ' .' + options.class_today,
                           'click.datetimeshortcuts', function(event) {
                     $(event.target)
                         // find .datetimeshortcuts span
-                        .parents('.' + o.class_shortcuts)
-                        .prev(o.date_fields)
+                        .parents('.' + options.class_shortcuts)
+                        .prev(options.date_fields)
                         // update field
                         .trigger('callback_today.datetimeshortcuts', 0);
                     fieldset.trigger('hide_calendar.datetimeshortcuts');
@@ -610,7 +611,7 @@
                 })
 
                 // click on yesterday/today/tomorrow links in calendar
-                .delegate('.' + o.class_calendarbox + ' .' + o.class_today,
+                .delegate('.' + options.class_calendarbox + ' .' + options.class_today,
                           'click.datetimeshortcuts', function(event) {
                     var target = $(event.target);
                     var offset = 0;
@@ -621,7 +622,7 @@
                         offset = 1;
                     }
                     // find calendarbox
-                    target.parents('.' + o.class_calendarbox)
+                    target.parents('.' + options.class_calendarbox)
                         // target field is stored on calendar's data attribute
                         .data('calendar_date_field')
                         // update field
@@ -634,7 +635,7 @@
                 })
 
                 // click on clock
-                .delegate('.' + o.class_shortcuts + ' .' + o.class_clock,
+                .delegate('.' + options.class_shortcuts + ' .' + options.class_clock,
                           'click.datetimeshortcuts', function(event) {
                     $(event.target).trigger('show_clock.datetimeshortcuts');
                     // prevent following link
@@ -643,12 +644,12 @@
                 })
 
                 // click on now link
-                .delegate('.' + o.class_shortcuts + ' .' + o.class_now,
+                .delegate('.' + options.class_shortcuts + ' .' + options.class_now,
                           'click.datetimeshortcuts', function(event) {
                     $(event.target)
                         // find .datetimeshortcuts span
-                        .parents('.' + o.class_shortcuts)
-                        .prev(o.time_fields)
+                        .parents('.' + options.class_shortcuts)
+                        .prev(options.time_fields)
                         // update field
                         .trigger('callback_now.datetimeshortcuts');
                     fieldset.trigger('hide_clock.datetimeshortcuts');
