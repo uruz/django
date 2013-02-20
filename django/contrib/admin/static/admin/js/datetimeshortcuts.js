@@ -389,7 +389,7 @@
 
                     // position based on LTR or RTL direction
                     var target_pos = target.position();
-                    var dir = $('body').attr('direction');
+                    var dir = $('body').prop('direction');
                     if (dir != 'rtl') {
                         calendar.css(
                             'left', target_pos.left + target.width() + 'px');
@@ -489,7 +489,7 @@
 
                     // position based on LTR or RTL direction
                     var target_pos = target.position();
-                    var dir = $('body').attr('direction');
+                    var dir = $('body').prop('direction');
                     if (dir != 'rtl') {
                         clock.css(
                             'left', target_pos.left + target.width() + 'px');
